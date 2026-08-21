@@ -42,12 +42,139 @@ public class CartServiceImpl implements CartService {
     private final ModelMapper modelMapper;
     private final CustomerRepo customerRepo;
     private final CouponRepo couponRepo;
+    private final com.company.efood.seller.repository.BranchRepo branchRepo;
     private BaseUtils baseUtils;
 
     @Override
     public CartItemDto addToCart(CartItemDto dto) {
         final CartItem entity = cartRepo.save(generateEntity(dto, true));
         return generateDto(entity);
+    }
+
+    @Override
+    @Transactional
+    public CartItemDto addItemToCart(com.company.efood.user.dto.CartItemRequestDTO request, Double headerLat, Double headerLon) {
+        // 1. Fetch & validate Product
+        Product product = productRepo.findById(request.getProductId())
+                .orElseThrow(() -> new IllegalArgumentException("Product not found with ID: " + request.getProductId()));
+
+        if (Boolean.FALSE.equals(product.getActive())) {
+            throw new IllegalStateException("Product is currently inactive: " + product.getProductName());
+        }
+
+        // 2. Validate stock server-side
+        int requestedQty = (request.getQuantity() != null && request.getQuantity() > 0) ? request.getQuantity() : 1;
+        if (product.getQty() == null || product.getQty() < requestedQty) {
+            throw new IllegalStateException(String.format(
+                    "Insufficient stock for product '%s'. Available: %d, Requested: %d",
+                    product.getProductName(),
+                    product.getQty() != null ? product.getQty() : 0,
+                    requestedQty
+            ));
+        }
+
+        // 3. Resolve Customer & Context
+        Long customerId = CurrentUserContext.getReferenceId();
+        Customer customer = (customerId != null) ? customerRepo.findById(customerId).orElse(null) : null;
+        String cartKey = request.getCartKey();
+
+        // 4. Geospatial / Explicit Branch Resolution
+        Double lat = request.getLatitude() != null ? request.getLatitude() : headerLat;
+        Double lon = request.getLongitude() != null ? request.getLongitude() : headerLon;
+        com.company.efood.sys.entity.Branch branch = resolveBranch(product, request.getBranchId(), lat, lon);
+
+        // 5. Calculate Server-Side Unit Price (Never trust client prices)
+        BigDecimal unitPrice = calculateServerPrice(product, request.getVariantId());
+        BigDecimal totalPrice = unitPrice.multiply(BigDecimal.valueOf(requestedQty));
+
+        // 6. Find or Create CartItem
+        CartItem cartItem = null;
+        if (customer != null) {
+            cartItem = cartRepo.findByCustomerIdAndProductId(customer.getId(), product.getId()).orElse(null);
+        } else if (cartKey != null && !cartKey.isBlank()) {
+            cartItem = cartRepo.findByCartKeyAndProductId(cartKey, product.getId()).orElse(null);
+        }
+
+        if (cartItem != null) {
+            // Update existing cart item
+            int newQuantity = cartItem.getQuantity() + requestedQty;
+            if (product.getQty() < newQuantity) {
+                throw new IllegalStateException("Cannot add more. Max available stock is: " + product.getQty());
+            }
+            cartItem.setQuantity(newQuantity);
+            cartItem.setUnitPrice(unitPrice);
+            cartItem.setTotalPrice(unitPrice.multiply(BigDecimal.valueOf(newQuantity)));
+            if (branch != null) {
+                cartItem.setBranchId(branch.getId());
+            }
+            cartItem.setUpdateDate(LocalDateTime.now());
+            if (customerId != null) {
+                cartItem.setUpdateUser(customerId);
+            }
+        } else {
+            // Create new cart item
+            cartItem = new CartItem();
+            cartItem.setProduct(product);
+            cartItem.setCustomer(customer);
+            cartItem.setCartKey(cartKey);
+            cartItem.setQuantity(requestedQty);
+            cartItem.setUnitPrice(unitPrice);
+            cartItem.setTotalPrice(totalPrice);
+            if (branch != null) {
+                cartItem.setBranchId(branch.getId());
+            }
+            cartItem.setActive(true);
+            cartItem.setEntryDate(LocalDateTime.now());
+            cartItem.setEntryUser(customerId != null ? customerId : 0L);
+        }
+
+        CartItem saved = cartRepo.save(cartItem);
+        return generateDto(saved);
+    }
+
+    private com.company.efood.sys.entity.Branch resolveBranch(Product product, Long requestedBranchId, Double lat, Double lon) {
+        if (requestedBranchId != null) {
+            return branchRepo.findById(requestedBranchId)
+                    .filter(com.company.efood.sys.entity.Branch::getIsOpen)
+                    .orElseThrow(() -> new IllegalArgumentException("Requested branch is invalid or closed: " + requestedBranchId));
+        }
+
+        Long shopId = (product.getBranch() != null && product.getBranch().getShop() != null)
+                ? product.getBranch().getShop().getId()
+                : null;
+
+        if (shopId != null && lat != null && lon != null) {
+            return branchRepo.findNearestActiveBranchByShopId(shopId, lat, lon)
+                    .orElseGet(() -> branchRepo.findFirstByShopIdAndIsOpenTrueAndActiveTrue(shopId)
+                            .orElse(product.getBranch()));
+        }
+
+        if (product.getBranch() != null) {
+            return product.getBranch();
+        }
+
+        if (shopId != null) {
+            return branchRepo.findFirstByShopIdAndIsOpenTrueAndActiveTrue(shopId)
+                    .orElseThrow(() -> new IllegalStateException("No active branch available for product: " + product.getId()));
+        }
+
+        return null;
+    }
+
+    private BigDecimal calculateServerPrice(Product product, Long variantId) {
+        BigDecimal basePrice = (product.getDiscountPrice() != null && product.getDiscountPrice().compareTo(BigDecimal.ZERO) > 0)
+                ? product.getDiscountPrice()
+                : product.getPrice();
+
+        if (variantId != null && product.getVariants() != null) {
+            for (com.company.efood.sys.entity.ProductVariant variant : product.getVariants()) {
+                if (variant.getId().equals(variantId) && variant.getExtraPrice() != null) {
+                    basePrice = basePrice.add(variant.getExtraPrice());
+                    break;
+                }
+            }
+        }
+        return basePrice;
     }
 
     @Override

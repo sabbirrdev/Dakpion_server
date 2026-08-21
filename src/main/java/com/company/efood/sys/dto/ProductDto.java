@@ -36,6 +36,9 @@ public class ProductDto extends BaseDto {
     private Long branchId;
     private String branchName;
 
+    private Long shopId;
+    private String shopName;
+
     private Long reviewId;
     private Integer reviewCount;
     private BigDecimal rating;

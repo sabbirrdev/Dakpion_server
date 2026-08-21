@@ -1,13 +1,12 @@
 package com.company.efood.user.controller;
 
-
 import com.company.efood.base.BasePageableRequest;
 import com.company.efood.base.BaseResponse;
 import com.company.efood.base.BaseUtils;
 import com.company.efood.config.CurrentUserContext;
 import com.company.efood.sys.utils.AuthTokenUtils;
 import com.company.efood.user.dto.CartItemDto;
-import com.company.efood.user.entity.CartItem;
+import com.company.efood.user.dto.CartItemRequestDTO;
 import com.company.efood.user.repository.CartRepo;
 import com.company.efood.user.repository.CustomerRepo;
 import com.company.efood.user.services.CartService;
@@ -20,7 +19,7 @@ import static com.company.efood.base.BaseConstants.PRIVET_ENDPOINT;
 
 @AllArgsConstructor
 @RestController
-@RequestMapping(PRIVET_ENDPOINT+"cart")
+@RequestMapping(PRIVET_ENDPOINT + "cart")
 public class CartController {
     private final CartService cartService;
     private final BaseUtils baseUtils;
@@ -32,6 +31,24 @@ public class CartController {
     public BaseResponse addToCart(@Valid @RequestBody CartItemDto body, HttpServletRequest request) {
         try {
             return baseUtils.generateSuccessResponse(cartService.addToCart(body), "Item added to cart", "আইটেম কার্টে যোগ হয়েছে");
+        } catch (Exception e) {
+            return baseUtils.generateErrorResponse(e);
+        }
+    }
+
+    @PostMapping("/add-direct")
+    public BaseResponse addDirectToCart(
+            @Valid @RequestBody CartItemRequestDTO body,
+            @RequestHeader(value = "X-Latitude", required = false) Double headerLat,
+            @RequestHeader(value = "X-Longitude", required = false) Double headerLon,
+            HttpServletRequest request
+    ) {
+        try {
+            return baseUtils.generateSuccessResponse(
+                    cartService.addItemToCart(body, headerLat, headerLon),
+                    "Item added to cart",
+                    "আইটেম কার্টে যোগ হয়েছে"
+            );
         } catch (Exception e) {
             return baseUtils.generateErrorResponse(e);
         }

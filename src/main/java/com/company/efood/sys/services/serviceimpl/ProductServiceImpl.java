@@ -224,7 +224,16 @@ public Page<ProductDto> getPageableProductByBranch(BasePageableRequest basePagea
 
 
     public ProductDto generateDto(Product entity) {
-        return modelMapper.map(entity, ProductDto.class);
+        ProductDto dto = modelMapper.map(entity, ProductDto.class);
+        if (entity.getBranch() != null) {
+            dto.setBranchId(entity.getBranch().getId());
+            dto.setBranchName(entity.getBranch().getName());
+            if (entity.getBranch().getShop() != null) {
+                dto.setShopId(entity.getBranch().getShop().getId());
+                dto.setShopName(entity.getBranch().getShop().getShopName());
+            }
+        }
+        return dto;
     }
 
     private void setCategory(Product entity, Long categoryId) {

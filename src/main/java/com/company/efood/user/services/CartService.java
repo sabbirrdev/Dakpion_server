@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 
 public interface CartService {
      CartItemDto addToCart(CartItemDto cartDto);
+     CartItemDto addItemToCart(com.company.efood.user.dto.CartItemRequestDTO request, Double headerLat, Double headerLon);
      CartItemDto removeItem(CartItemDto cartDto);
      Page<CartItemDto> getPageableCartItems(BasePageableRequest basePageableRequest);
      CartSummaryModel getCartSummary(BasePageableRequest basePageableRequest);
