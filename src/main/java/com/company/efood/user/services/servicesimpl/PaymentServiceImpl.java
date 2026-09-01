@@ -103,18 +103,41 @@ public class PaymentServiceImpl implements PaymentService {
         Logger.getGlobal().info("params: " + params);
         String txnId = params.get("tran_id");
         String status = params.get("status");
+        String valId = params.get("val_id");
 
-        Logger.getGlobal().info("Payment Success: " + txnId + " " + status);
+        if (txnId == null || txnId.isBlank()) {
+            throw new IllegalArgumentException("Transaction ID is missing");
+        }
+
+        // Validate status from gateway callback
+        if (status == null || (!status.equalsIgnoreCase("VALID") && !status.equalsIgnoreCase("VALIDATED"))) {
+            throw new SecurityException("Payment validation failed: status is " + status);
+        }
+
+        Logger.getGlobal().info("Payment Success Verified: " + txnId + " with status: " + status);
 
         Payment payment = paymentRepo.findByTransactionId(txnId)
-                .orElseThrow(() -> new RuntimeException("Payment not found"));
+                .orElseThrow(() -> new RuntimeException("Payment not found for transaction: " + txnId));
+
+        // Validate amount match if provided
+        String callbackAmount = params.get("amount");
+        if (callbackAmount != null && !callbackAmount.isBlank() && payment.getAmount() != null) {
+            try {
+                double paidAmount = Double.parseDouble(callbackAmount.trim());
+                if (Math.abs(paidAmount - payment.getAmount().doubleValue()) > 0.01) {
+                    throw new SecurityException("Payment amount mismatch. Expected: " + payment.getAmount() + ", received: " + paidAmount);
+                }
+            } catch (NumberFormatException ignored) {}
+        }
 
         payment.setStatus(PaymentStatus.PAID);
         paymentRepo.save(payment);
 
         Order order = payment.getOrder();
-        order.setStatus(OrderStatus.PAID);
-        orderRepo.save(order);
+        if (order != null) {
+            order.setStatus(OrderStatus.PAID);
+            orderRepo.save(order);
+        }
     }
 
     @Transactional

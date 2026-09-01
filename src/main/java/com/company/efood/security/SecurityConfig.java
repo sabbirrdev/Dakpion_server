@@ -30,6 +30,8 @@ public class SecurityConfig {
     private CustomAccessDeniedHandler accessDeniedHandler;
     @Autowired
     private JwtAuthFilter jwtAuthFilter;
+    @Autowired
+    private FirebaseAuthenticationFilter firebaseAuthenticationFilter;
 
     /** Allow all origins for every HTTP method — tighten in production. */
     @Bean
@@ -84,7 +86,8 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 );
 
-        // JWT filter
+        // Firebase Auth & JWT filters
+        http.addFilterBefore(firebaseAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

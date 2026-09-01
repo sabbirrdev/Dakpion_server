@@ -67,14 +67,20 @@ public class FileServiceImpl implements FileService {
     @Override
     public Resource loadFile(String filename) throws MalformedURLException {
         Path filePath = fileStorageLocation.resolve(filename).normalize();
+        if (!filePath.startsWith(fileStorageLocation)) {
+            throw new SecurityException("Access denied: Invalid file path");
+        }
         Resource resource = new UrlResource(filePath.toUri());
-        if (resource.exists()) return resource;
+        if (resource.exists() && resource.isReadable()) return resource;
         else throw new MalformedURLException("File not found: " + filename);
     }
 
     @Override
     public void deleteFile(String filename) throws IOException {
         Path filePath = fileStorageLocation.resolve(filename).normalize();
+        if (!filePath.startsWith(fileStorageLocation)) {
+            throw new SecurityException("Access denied: Invalid file path");
+        }
         Files.deleteIfExists(filePath);
     }
 

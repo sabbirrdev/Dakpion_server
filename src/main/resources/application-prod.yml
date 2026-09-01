@@ -1,0 +1,23 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+  jpa:
+    hibernate:
+      ddl-auto: validate # Strictly validates schema; prevents unintentional table alters in production
+    show-sql: false
+
+app:
+  seeding:
+    enabled: true # Verifies essential baseline records (e.g. password policy, super admin, core categories)
+    seed-test-data: false # Strictly disables mock accounts in production

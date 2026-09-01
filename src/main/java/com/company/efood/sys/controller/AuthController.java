@@ -338,6 +338,175 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/change-password")
+    public ResponseEntity<BaseResponse> changePassword(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String oldPassword = body.get("oldPassword");
+        String newPassword = body.get("newPassword");
+
+        if (username == null || username.isBlank() ||
+            oldPassword == null || oldPassword.isBlank() ||
+            newPassword == null || newPassword.isBlank()) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("Username, old password, and new password are required")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        AppUser user = appUserRepo.findByUsername(username).orElse(null);
+        if (user == null) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.NOT_FOUND.value())
+                    .message("User account not found")
+                    .build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("Incorrect current password")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        int minLength = (user.getPasswordPolicy() != null && user.getPasswordPolicy().getMinLength() != null)
+                ? user.getPasswordPolicy().getMinLength() : 5;
+        if (newPassword.length() < minLength) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("New password must be at least " + minLength + " characters long")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setUpdateDate(LocalDateTime.now());
+        appUserRepo.save(user);
+
+        BaseResponse response = BaseResponse.builder()
+                .status(true)
+                .statusCode(HttpStatus.OK.value())
+                .message("Password changed successfully")
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/forgot-password/request")
+    public ResponseEntity<BaseResponse> forgotPasswordRequest(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        if (username == null || username.isBlank()) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("Username/Email is required")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        AppUser user = appUserRepo.findByUsername(username).orElse(null);
+        if (user == null) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.NOT_FOUND.value())
+                    .message("No account found with this username or email")
+                    .build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        String otp = String.format("%06d", (int) (Math.random() * 1000000));
+        user.setOtp(otp);
+        user.setOtpExpiresAt(LocalDateTime.now().plusMinutes(10));
+        user.setUpdateDate(LocalDateTime.now());
+        appUserRepo.save(user);
+
+        boolean mailSent = emailOtpService.sendOtpEmail(username, otp);
+        BaseResponse response = BaseResponse.builder()
+                .status(true)
+                .statusCode(HttpStatus.OK.value())
+                .message(mailSent ? "Password reset OTP sent to your email" : "Password reset OTP generated (development mode)")
+                .data(mailSent
+                        ? Map.of("expiresAt", user.getOtpExpiresAt().toString())
+                        : Map.of("otp", otp, "expiresAt", user.getOtpExpiresAt().toString()))
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/forgot-password/reset")
+    public ResponseEntity<BaseResponse> forgotPasswordReset(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String otp = body.get("otp");
+        String newPassword = body.get("newPassword");
+
+        if (username == null || username.isBlank() ||
+            otp == null || otp.isBlank() ||
+            newPassword == null || newPassword.isBlank()) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("Username, OTP, and new password are required")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        AppUser user = appUserRepo.findByUsername(username).orElse(null);
+        if (user == null) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.NOT_FOUND.value())
+                    .message("User not found")
+                    .build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        if (user.getOtpExpiresAt() == null || user.getOtpExpiresAt().isBefore(LocalDateTime.now())) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("OTP has expired. Please request a new one.")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        if (!otp.equals(user.getOtp())) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("Invalid OTP code.")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        int minLength = (user.getPasswordPolicy() != null && user.getPasswordPolicy().getMinLength() != null)
+                ? user.getPasswordPolicy().getMinLength() : 5;
+        if (newPassword.length() < minLength) {
+            BaseResponse response = BaseResponse.builder()
+                    .status(false)
+                    .statusCode(HttpStatus.BAD_REQUEST.value())
+                    .message("New password must be at least " + minLength + " characters long")
+                    .build();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setOtp(null);
+        user.setOtpExpiresAt(null);
+        user.setUpdateDate(LocalDateTime.now());
+        appUserRepo.save(user);
+
+        BaseResponse response = BaseResponse.builder()
+                .status(true)
+                .statusCode(HttpStatus.OK.value())
+                .message("Password has been reset successfully. You can now log in.")
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
     private AppUser generateAppUserEntity(RegisterRequestModel requestModel, PasswordPolicyDto passwordPolicy) {
         AppUser appUser = new AppUser();
         appUser.setDisplayName(requestModel.getDisplayName());

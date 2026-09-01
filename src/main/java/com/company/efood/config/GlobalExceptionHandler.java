@@ -48,7 +48,36 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles Spring Data Access exceptions (Hibernate mapping, constraint violations, missing columns/tables).
+     * Handles database constraint and integrity violations (e.g. duplicate key, foreign key errors)
+     * without leaking table names, SQL statements, or database internal details.
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(
+            org.springframework.dao.DataIntegrityViolationException ex, HttpServletRequest request) {
+
+        String correlationId = resolveCorrelationId(request);
+        log.error("[CorrelationID: {}] Data Integrity Violation on URI {}: {}",
+                correlationId, request.getRequestURI(), ex.getMessage(), ex);
+
+        String friendlyMessage = "The operation could not be completed because a conflicting record already exists or required references are missing.";
+        String rootMsg = ex.getRootCause() != null ? ex.getRootCause().getMessage() : "";
+        if (rootMsg != null && rootMsg.toLowerCase().contains("duplicate")) {
+            friendlyMessage = "A record with this identifier or unique value already exists.";
+        }
+
+        ApiErrorResponse response = ApiErrorResponse.builder()
+                .success(false)
+                .statusCode(HttpStatus.CONFLICT.value())
+                .message(friendlyMessage)
+                .correlationId(correlationId)
+                .timestamp(Instant.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    /**
+     * Handles Spring Data Access exceptions (Hibernate mapping, missing columns/tables).
      */
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<ApiErrorResponse> handleDataAccessException(

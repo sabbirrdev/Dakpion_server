@@ -10,4 +10,7 @@ public interface PasswordPolicyRepo extends JpaRepository<PasswordPolicy, Long> 
 
     Optional<PasswordPolicy> findById(Long id);
 
+    boolean existsByName(String name);
+
+    Optional<PasswordPolicy> findByName(String name);
 } 

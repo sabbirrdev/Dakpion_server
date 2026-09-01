@@ -42,4 +42,6 @@ public interface CategoryRepo extends JpaRepository<Category, Long> {
     Page<Category> findByActive(Boolean active, Pageable pageable);
 
     Optional<Category> findByCategoryName(String categoryName);
+
+    boolean existsByCategoryName(String categoryName);
 }
