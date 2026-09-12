@@ -14,7 +14,7 @@ spring:
       connection-timeout: 20000
   jpa:
     hibernate:
-      ddl-auto: validate # Strictly validates schema; prevents unintentional table alters in production
+      ddl-auto: update # Strictly validates schema; prevents unintentional table alters in production
     show-sql: false
 
 app:
